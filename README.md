@@ -1,12 +1,16 @@
-# spatial_crop_model
+# YIELDS: Yield Inferencing from Earth-observation and Land Data Systems for Applications across the U.S. Corn Belt
 ## Overview
+The study's overall objective is to produce annual U.S. maize yield from NASA satellite products by estimating seasonal crop production and explicitly modeling the conversion from production to grain yield.
+
+## Crop Model
 This study implements a spatial process-based maize crop growth model that simulates LAI and biomass for gird with varying evapotranspiration and soil data 
 
+### Data
 - **Weather (Temperature, Precipitation, Solar radiation)** — pulled via the **Kansas Mesonet API**
 - **Evapotranspiration (ET)** — pulled via the **OpenET API**
 - **Soil properties** — pulled via the **gSSURGO Soil Data Access (SDA) API**
 
-## Model Components
+### Components
 1. **Thermal time accumulation** — drives crop development stages (Wang, 1960)
 2. **Light Use Efficiency (LUE) model** — drives biomass accumulation (Monteith, 1972)
 3. **Beer-Lambert light interception** — models canopy light capture (Monsi & Saeki, 1953)
