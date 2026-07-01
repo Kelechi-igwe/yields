@@ -1,3 +1,4 @@
+# STOP giving it big title when nothing has been done -- show workings first -- ... can you send me small data to start with? I really want to try out Bayes Net with this
 # YIELDS: Yield Inferencing from Earth-observation and Land Data Systems for Applications across the U.S. Corn Belt
 ## Overview
 The study's overall objective is to produce annual U.S. maize yield from NASA satellite products by estimating seasonal crop production and explicitly modeling the conversion from production to grain yield.
