@@ -5,6 +5,7 @@ url_inputs:
 
 data_specs:
   date_format: "%Y%m%d%H%M%S"
+  seed: 42
 
   mesonet_vars:
     - 'TEMP2MMIN'
@@ -22,3 +23,20 @@ column_mapping:
   TEMP2MAVG: T_mean     # °C — used for GDD and Hargreaves ET
   TEMP2MMIN: TMIN       # °C
   TEMP2MMAX: TMAX        # °C
+
+
+queries:
+  gssurgo_wkt: |
+    SELECT
+    mu.mukey, mu.muname, co.cokey,
+    ch.hzdept_r, ch.hzdepb_r,
+    ch.wthirdbar_r, ch.wfifteenbar_r,
+    ch.sandtotal_r, ch.claytotal_r, ch.om_r
+    FROM
+    mapunit AS mu
+    INNER JOIN SDA_Get_Mukey_from_intersection_with_WktWgs84('{wkt_geom}') AS s
+    ON mu.mukey = s.mukey
+    INNER JOIN component AS co ON mu.mukey = co.mukey
+    INNER JOIN chorizon  AS ch ON co.cokey = ch.cokey
+    WHERE co.majcompflag = 'Yes'
+    ORDER BY mu.mukey, ch.hzdept_r
