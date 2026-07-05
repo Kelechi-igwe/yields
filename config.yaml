@@ -5,7 +5,7 @@ url_inputs:
 
 data_specs:
   date_format: "%Y%m%d%H%M%S"
-  seed: 42
+  seed: 785
 
   mesonet_vars:
     - 'TEMP2MMIN'
@@ -67,12 +67,12 @@ crop_parameters:
 
 
 initial_state_template:
-    TT: 0.0
-    LAI: 0.1
-    B: 0.0
-    B_leaf: 0.0
-    B_grain: 0.0
-    Zr: 0.15
+  TT: 0.0
+  LAI: 0.1
+  B: 0.0
+  B_leaf: 0.0
+  B_grain: 0.0
+  Zr: 0.15
 
 
 biomass_allo_stages:
