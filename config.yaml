@@ -40,3 +40,44 @@ queries:
     INNER JOIN chorizon  AS ch ON co.cokey = ch.cokey
     WHERE co.majcompflag = 'Yes'
     ORDER BY mu.mukey, ch.hzdept_r
+
+crop_parameters:
+  # Thermal time (Wang 1960)
+  T_base: 8
+  T_opt: 30
+  # Phenological TT thresholds °C·d (Ritchie et al. 1993)
+  TT_emergence: 100
+  TT_veg_end: 800
+  TT_grainfill: 1200
+  TT_maturity: 1600
+  # Light use efficiency (Monteith 1972)
+  LUE: 3.5 # g biomass / MJ APAR  (maize: 2.5–4.5)
+  k: 0.6 # Beer-Lambert extinction (maize: 0.5–0.7)
+  # Canopy structure
+  SLA: 0.015 # m²/g  (LAI = SLA × B_leaf)
+  LAI_max: 7.0
+  # Senescence
+  k_sen: 0.02
+  k_sen_max: 0.05
+  # Root system (Gerwitz & Page 1974)
+  Zr_max: 1.2
+  root_k: 3.0
+  # Hargreaves ET coefficient (Hargreaves & Samani 1985)
+  ET_coeff: 0.6
+
+
+initial_state_template:
+    TT: 0.0
+    LAI: 0.1
+    B: 0.0
+    B_leaf: 0.0
+    B_grain: 0.0
+    Zr: 0.15
+
+
+biomass_allo_stages:
+  emergence: {f_leaf: 0.60, f_grain: 0.00}
+  vegetative: {f_leaf: 0.50, f_grain: 0.00}
+  reproductive: {f_leaf: 0.20, f_grain: 0.30}
+  grain_fill: {f_leaf: 0.05, f_grain: 0.70}
+  maturity: {f_leaf: 0.00, f_grain: 1.00}

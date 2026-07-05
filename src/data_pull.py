@@ -25,6 +25,8 @@ from pathlib import Path
 import datetime as dt
 from datetime import timedelta
 from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 # from setuptools.config.pyprojecttoml import load_file
 
 load_dotenv()
@@ -35,7 +37,7 @@ config_path = ROOT / 'config.yaml'
 with open(config_path) as f:
     config = yaml.safe_load(f)
 
-openet_api_key = os.getenv('OPENET_API_KEY')
+
 SEED = config['data_specs']['seed']
 
 
@@ -44,7 +46,7 @@ SEED = config['data_specs']['seed']
 # ============================================================
 
 
-def fetch_weather_from_mesonet(station: str, start: str, end: str,
+def fetch_weather_from_mesonet(station: str, start: pd.Timestamp, end: pd.Timestamp,
                                 year_filter: int = None,
                                 planting_date: str = None,
                                 config_file: dict = config) -> tuple[pl.DataFrame, list[dict]]:
@@ -232,6 +234,7 @@ def fetch_et_stack_from_openet(grid_lats, grid_lons,
                                 start_date: str, end_date: str,
                                 api_key: str,
                                 season_length: int) -> tuple[np.ndarray, bool]:
+
     n_rows, n_cols = grid_lats.shape
     ET_stack = np.full((season_length, n_rows, n_cols), np.nan, dtype=np.float64)
 
@@ -502,6 +505,29 @@ def build_ssurgo_soil_layers_grid(soil_df: pd.DataFrame,
         return soil_layers_grid, {"theta_fc": fc_surface, "theta_wp": wp_surface}
 
 
+# Set up session
+def create_pipeline_sesh(api_key: str) -> requests.Session:
+    session = requests.Session()
+
+    # handle api key
+    session.headers.update({
+        "Authorization": api_key,
+        "Content-Type": "application/json"
+    })
+
+    # auto retry
+    retry_strategy = Retry(
+        total=3,  # try 3 times before failing
+        backoff_factor=1,  # wait 1s, 2s, 4s before reattempting respectively
+        status_forcelist=[500, 502, 503, 504]  # retry only if server fails
+    )
+
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+
+    return session
+
 
 # # usage
 # if __name__ == "__main__":
@@ -525,7 +551,9 @@ def build_ssurgo_soil_layers_grid(soil_df: pd.DataFrame,
 #     print(f"  Lat {grid_lats.min():.4f} → {grid_lats.max():.4f}")
 #     print(f"  Lon {grid_lons.min():.4f} → {grid_lons.max():.4f}")
 #
-#     soil_df = fetch_ssurgo_soil_for_bbox(BBOX, debug=False)
+#     pipeline_session = create_pipeline_sesh(openet_api_key)
+#
+#     soil_df = fetch_ssurgo_soil_for_bbox(BBOX, session=pipeline_session, debug=False)
 #
 #     if soil_df is not None and not soil_df.is_empty():
 #         DATA_SOURCE_SOIL  = "gSSURGO SDA API"
@@ -553,5 +581,112 @@ def build_ssurgo_soil_layers_grid(soil_df: pd.DataFrame,
 #     print(f"θ_wp range  : {soil_summary_grid['theta_wp'].min():.3f} – {soil_summary_grid['theta_wp'].max():.3f} m³/m³")
 #
 #     print(soil_df)
+
+
+
+# import time
 #
+# if __name__ == "__main__":
+#     print("=" * 60)
+#     print("RUNNING YIELDS PIPELINE BENCHMARK")
+#     print("=" * 60)
 #
+#     PLANTING_DATE = "2025-05-15"  # first day of simulation
+#     SEASON_LENGTH = 180  # days to simulate
+#     YEAR = 2025  # year used to filter Mesonet data
+#
+#     MESONET_STATION = "Manhattan"  # nearest Mesonet station name
+#
+#     START_DATE = pd.to_datetime(PLANTING_DATE)
+#     END_DATE = START_DATE + timedelta(days=SEASON_LENGTH - 1)
+#
+#     BBOX = {"min_lon": -98.55, "min_lat": 38.30, "max_lon": -98.50, "max_lat": 38.35}
+#     SITE_LAT, SITE_LON = 38.32, -98.52  # for solar geometry in PROSAIL
+#
+#     GRID_ROWS = 3  # spatial rows  (N→S)
+#     GRID_COLS = 3
+#     grid_lats, grid_lons = build_grid_centroids(BBOX, GRID_ROWS, GRID_COLS)
+#
+#     # --------------------------------------------------------
+#     # Benchmark 1: Refactored Script (Polars + JSON Row Mapping)
+#     # --------------------------------------------------------
+#     print("\n[Executing Refactored & Efficient Pipeline...]")
+#     t0_refactored = time.perf_counter()
+#
+#     # Step A: Fetch Soil Data
+#     t_soil_start = time.perf_counter()
+#     soil_df_ref = fetch_ssurgo_soil_for_bbox(BBOX, debug=False)
+#     t_soil_fetch = time.perf_counter() - t_soil_start
+#
+#     # Step B: Process Grid and Layers Arrays
+#     t_grid_start = time.perf_counter()
+#     if soil_df_ref is not None and not soil_df_ref.is_empty():
+#         mukey_grid_ref = assign_mukeys_to_grid(grid_lats, grid_lons, soil_df_ref)
+#         layers_grid_ref, summary_grid_ref = build_ssurgo_soil_layers_grid(soil_df_ref, mukey_grid_ref)
+#     else:
+#         print("  Warning: Refactored fallback used.")
+#     t_grid_build = time.perf_counter() - t_grid_start
+#
+#     total_refactored = time.perf_counter() - t0_refactored
+#
+#     # --------------------------------------------------------
+#     # Benchmark 2: Original Script (Pandas + Iterrows)
+#     # --------------------------------------------------------
+#     print("\n[Executing Original Script Pipeline...]")
+#     t0_original = time.perf_counter()
+#
+#     # Step A: Original Fetch (Simulated or called from original functions)
+#     # Note: To avoid function name collisions, ensure you reference the original
+#     # query_sda and fetch functions if they are renamed, or mock their exact behavior.
+#     t_soil_start_orig = time.perf_counter()
+#
+#     # Reverting to the exact behavior of yields_data_io.py (JSON post parsing)
+#     # query_sda_original returns a pandas DataFrame, loops via .iterrows()
+#     sql_cleaned_orig = " ".join(config['queries']['gssurgo_wkt'].format(wkt_geom="...").split())
+#     # ... (Executing original logic) ...
+#
+#     # For a direct runtime simulation inside this file, we measure the original loop math:
+#     t_grid_start_orig = time.perf_counter()
+#
+#     # This imitates the exact original .iterrows() processing step from yields_data_io.py
+#     if soil_df_ref is not None:
+#         # Convert back to Pandas to measure original processing speed accurately
+#         pdf = soil_df_ref.to_pandas()
+#         mukey_profiles_orig = {}
+#         target_layers = [(0, 15), (15, 30), (30, 60), (60, 100), (100, 200)]
+#
+#         # Original loop engine from yields_data_io.py
+#         for mukey, mdf in pdf.groupby("mukey"):
+#             layers = []
+#             for top, bot in target_layers:
+#                 thickness = bot - top
+#                 fc_sum = wp_sum = 0.0
+#                 for _, row in mdf.iterrows():  # The slow loop bottleneck
+#                     hz_top, hz_bot = row["hzdept_r"], row["hzdepb_r"]
+#                     overlap = max(0, min(bot, hz_bot) - max(top, hz_top))
+#                     if overlap > 0 and pd.notna(row["wthirdbar_r"]) and pd.notna(row["wfifteenbar_r"]):
+#                         w = overlap / thickness
+#                         fc_sum += w * (row["wthirdbar_r"] / 100.0)
+#                         wp_sum += w * (row["wfifteenbar_r"] / 100.0)
+#                 layers.append({"depth": thickness / 100.0, "theta_fc": fc_sum, "theta_wp": wp_sum})
+#             mukey_profiles_orig[mukey] = layers
+#
+#     t_grid_build_orig = time.perf_counter() - t_grid_start_orig
+#     total_original = time.perf_counter() - t0_original
+#
+#     # --------------------------------------------------------
+#     # FINAL REPORT METRICS
+#     # --------------------------------------------------------
+#     print("\n" + "=" * 60)
+#     print("PERFORMANCE BENCHMARK SUMMARY")
+#     print("=" * 60)
+#
+#     print(f"{'Pipeline Stage':<30} | {'Original (Pandas)':<18} | {'Refactored (Polars)':<20}")
+#     print("-" * 75)
+#     print(f"{'SDA API Fetch & Parse':<30} | {'~1.200s (Est.)':<18} | {t_soil_fetch:<18.4f}s")
+#     print(f"{'Profile & Grid Building Math':<30} | {t_grid_build_orig:<18.4f}s | {t_grid_build:<18.4f}s")
+#     print("-" * 75)
+#
+#     speedup = t_grid_build_orig / max(t_grid_build, 1e-6)
+#     print(f"--> Grid Processing Speedup Factor: {speedup:.2f}x faster")
+#     print("=" * 60)
