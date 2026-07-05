@@ -1,19 +1,21 @@
 from pathlib import Path
 from datetime import timedelta
 import pandas as pd
-# import polars as pl
+import polars as pl
 import numpy as np
 import yaml
 from dotenv import load_dotenv
 import os
-# import time
+import time
 
-from src.simulation_eng import run_grid_simulation
+from src.cm_sim_engine import run_grid_simulation
 from src.data_pull import (fetch_weather_from_mesonet, build_grid_centroids,
                            fetch_et_stack_from_openet,
                            generate_et_stack_synthetic, fetch_ssurgo_soil_for_bbox,
                            assign_mukeys_to_grid, build_ssurgo_soil_layers_grid, create_pipeline_sesh
                            )
+from src.prosail_model import add_solar_geometry, map_to_prosail_params
+from src.pros_sim_engine import run_prosail_grid, extract_landsat_bands_and_indices
 
 load_dotenv()
 
@@ -43,7 +45,7 @@ SITE_LAT, SITE_LON = 38.32, -98.52  # for solar geometry in PROSAIL
 GRID_ROWS = 3  # spatial rows  (N→S)
 GRID_COLS = 3
 
-# t0_refactored = time.perf_counter()
+t0_refactored = time.perf_counter()
 
 _, weather_dta = fetch_weather_from_mesonet(station=MESONET_STATION,
                                          start=START_DATE,
@@ -101,8 +103,31 @@ cm_result = run_grid_simulation(weather_data=weather_dta,
                                 soil_layers_grid=soil_layers_grid,
                                 config_file=config)
 
-# total_refactored = time.perf_counter() - t0_refactored
+print("Running PROSAIL forward model ...")
+df_ps  = add_solar_geometry(cm_result, lat=SITE_LAT, lon=SITE_LON)
+df_ps  = map_to_prosail_params(df_ps)
+refl   = run_prosail_grid(df_ps)
+bands  = extract_landsat_bands_and_indices(refl)
+df_out = pl.concat([df_ps, bands], how="horizontal_extend")
 
-# print(total_refactored)
+print(f"PROSAIL complete.")
+
+stats = df_out.select(
+    min_ndvi = pl.col('NDVI').min(),
+    max_ndvi = pl.col('NDVI').max(),
+    min_savi = pl.col('SAVI').min(),
+    max_savi = pl.col('SAVI').max()
+)
+
+print(f"NDVI range : {stats['min_ndvi'].item():.3f} – {stats['max_ndvi'].item():.3f}")
+print(f"SAVI range : {stats['min_savi'].item():.3f} – {stats['max_savi'].item():.3f}")
+
+# print(f"NDVI range : {df_out.select('NDVI').min():.3f} – {df_out.select('NDVI').max():.3f}")
+# print(f"SAVI range : {df_out.select('SAVI').min():.3f} – {df_out.select('SAVI').max():.3f}")
+print(df_out.head())
+
+total_refactored = time.perf_counter() - t0_refactored
+
+print(total_refactored)
 
 # print(cm_result.head())
