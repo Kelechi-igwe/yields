@@ -1,0 +1,83 @@
+url_inputs:
+  MESONET_URL: 'http://mesonet.k-state.edu/rest/stationdata/'
+  OPENET_BASE_URL: 'https://openet-api.org'
+  SDA_URL: 'https://SDMDataAccess.nrcs.usda.gov/Tabular/post.rest'
+
+data_specs:
+  date_format: "%Y%m%d%H%M%S"
+  seed: 785
+
+  mesonet_vars:
+    - 'TEMP2MMIN'
+    - 'TEMP2MMAX'
+    - 'TEMP2MAVG'
+    - 'PRECIP'
+    - 'SR'
+#    - 'WSPD2MAVG'
+#    - 'VPDEFAVG'
+
+column_mapping:
+  TIMESTAMP: DATE
+  SR: solar_rad   # MJ m⁻² day⁻¹
+  PRECIP: rain      # mm day⁻¹
+  TEMP2MAVG: T_mean     # °C — used for GDD and Hargreaves ET
+  TEMP2MMIN: TMIN       # °C
+  TEMP2MMAX: TMAX        # °C
+
+
+queries:
+  gssurgo_wkt: |
+    SELECT
+    mu.mukey, mu.muname, co.cokey,
+    ch.hzdept_r, ch.hzdepb_r,
+    ch.wthirdbar_r, ch.wfifteenbar_r,
+    ch.sandtotal_r, ch.claytotal_r, ch.om_r
+    FROM
+    mapunit AS mu
+    INNER JOIN SDA_Get_Mukey_from_intersection_with_WktWgs84('{wkt_geom}') AS s
+    ON mu.mukey = s.mukey
+    INNER JOIN component AS co ON mu.mukey = co.mukey
+    INNER JOIN chorizon  AS ch ON co.cokey = ch.cokey
+    WHERE co.majcompflag = 'Yes'
+    ORDER BY mu.mukey, ch.hzdept_r
+
+crop_parameters:
+  # Thermal time (Wang 1960)
+  T_base: 8
+  T_opt: 30
+  # Phenological TT thresholds °C·d (Ritchie et al. 1993)
+  TT_emergence: 100
+  TT_veg_end: 800
+  TT_grainfill: 1200
+  TT_maturity: 1600
+  # Light use efficiency (Monteith 1972)
+  LUE: 3.5 # g biomass / MJ APAR  (maize: 2.5–4.5)
+  k: 0.6 # Beer-Lambert extinction (maize: 0.5–0.7)
+  # Canopy structure
+  SLA: 0.015 # m²/g  (LAI = SLA × B_leaf)
+  LAI_max: 7.0
+  # Senescence
+  k_sen: 0.02
+  k_sen_max: 0.05
+  # Root system (Gerwitz & Page 1974)
+  Zr_max: 1.2
+  root_k: 3.0
+  # Hargreaves ET coefficient (Hargreaves & Samani 1985)
+  ET_coeff: 0.6
+
+
+initial_state_template:
+  TT: 0.0
+  LAI: 0.1
+  B: 0.0
+  B_leaf: 0.0
+  B_grain: 0.0
+  Zr: 0.15
+
+
+biomass_allo_stages:
+  emergence: {f_leaf: 0.60, f_grain: 0.00}
+  vegetative: {f_leaf: 0.50, f_grain: 0.00}
+  reproductive: {f_leaf: 0.20, f_grain: 0.30}
+  grain_fill: {f_leaf: 0.05, f_grain: 0.70}
+  maturity: {f_leaf: 0.00, f_grain: 1.00}
