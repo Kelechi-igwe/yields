@@ -1,3 +1,5 @@
+
+
 from pathlib import Path
 from datetime import timedelta
 import pandas as pd
@@ -10,10 +12,10 @@ import time
 
 from src.cm_sim_engine import run_grid_simulation
 from src.data_pull import (fetch_weather_from_mesonet, build_grid_centroids,
-                           fetch_et_stack_from_openet,
-                           generate_et_stack_synthetic, fetch_ssurgo_soil_for_bbox,
-                           assign_mukeys_to_grid, build_ssurgo_soil_layers_grid, create_pipeline_sesh
-                           )
+                            fetch_et_stack_from_openet,
+                            generate_et_stack_synthetic, fetch_ssurgo_soil_for_bbox,
+                            assign_mukeys_to_grid, build_ssurgo_soil_layers_grid, create_pipeline_sesh
+                            )
 from src.prosail_model import add_solar_geometry, map_to_prosail_params
 from src.pros_sim_engine import run_prosail_grid, extract_landsat_bands_and_indices
 
@@ -26,7 +28,7 @@ ROOT = Path(__file__).resolve().parent
 
 config_path = ROOT / 'config.yaml'
 
-with open(config_path) as f:
+with open(config_path, encoding='utf-8') as f:
     config = yaml.safe_load(f)
 
 
@@ -48,11 +50,11 @@ GRID_COLS = 3
 t0_refactored = time.perf_counter()
 
 _, weather_dta = fetch_weather_from_mesonet(station=MESONET_STATION,
-                                         start=START_DATE,
-                                         end=END_DATE,
-                                         year_filter=YEAR,
-                                         planting_date=PLANTING_DATE,
-                                         config_file=config)
+                                            start=START_DATE,
+                                            end=END_DATE,
+                                            year_filter=YEAR,
+                                            planting_date=PLANTING_DATE,
+                                            config_file=config)
 
 print('Got weather data')
 
@@ -64,11 +66,11 @@ print('Got grid lats and lons')
 
 try:
     ET_stack, _ = fetch_et_stack_from_openet(grid_lats=grid_lats,
-                                          grid_lons=grid_lons,
-                                          start_date=START_DATE,
-                                          end_date=END_DATE,
-                                          api_key=openet_api_key,
-                                          season_length=SEASON_LENGTH)
+                                            grid_lons=grid_lons,
+                                            start_date=START_DATE,
+                                            end_date=END_DATE,
+                                            api_key=openet_api_key,
+                                            season_length=SEASON_LENGTH)
 
     if ET_stack is None or np.isnan(ET_stack).all():
         raise ValueError("OpenET API returned invalid data arrays due to upstream token errors.")
@@ -77,15 +79,15 @@ except Exception as e:
     print(f"\n[Warning] OpenET Ingestion Failed ({e}). Falling back to deterministic synthetic generation...")
     # fallback keeps if offline
     ET_stack = generate_et_stack_synthetic(n_rows=GRID_ROWS,
-                                           n_cols=GRID_COLS,
-                                           season_length=SEASON_LENGTH)
+                                            n_cols=GRID_COLS,
+                                            season_length=SEASON_LENGTH)
 
 print('Got ET')
 
 soil_dta = fetch_ssurgo_soil_for_bbox(bbox=BBOX,
-                                      session=pipeline_session,
-                                      debug=False,
-                                      config_file=config)
+                                        session=pipeline_session,
+                                        debug=False,
+                                        config_file=config)
 
 print('Got soil data')
 
