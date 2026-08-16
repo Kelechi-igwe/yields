@@ -1,2 +1,6 @@
 .env
 .DS_Store
+old_scripts/
+plots/
+__pycache__/
+*.pyc
