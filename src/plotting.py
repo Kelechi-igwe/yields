@@ -39,6 +39,10 @@ STAGE_COLORS = {
 }
 
 
+# -----------------------------------------------------------------------------
+# Shared plotting helpers
+# -----------------------------------------------------------------------------
+
 def _as_pandas(df):
     """Convert Polars or pandas objects into a pandas DataFrame."""
     if hasattr(df, "to_pandas"):
@@ -57,6 +61,10 @@ def add_stage_shading(axs, df):
         for ax in axs:
             ax.axvspan(sub["day"].min(), sub["day"].max(), color=color, alpha=0.08)
 
+
+# -----------------------------------------------------------------------------
+# Input and crop-model diagnostics
+# -----------------------------------------------------------------------------
 
 def plot_et_inputs(et_stack: np.ndarray, source_label: str = "OpenET", title: Optional[str] = None):
     """Plot ET time series and spatial snapshots."""
@@ -307,6 +315,135 @@ def plot_final_yield(df_final, grid_rows: int, grid_cols: int):
     return fig, axes
 
 
+
+# -----------------------------------------------------------------------------
+# SCYM diagnostics and output maps
+# -----------------------------------------------------------------------------
+
+def plot_scym_yield(scym_df, model: dict, title: str = "SCYM Yield Estimation (Lobell et al., 2015)"):
+    """
+    Two-panel diagnostic for the SCYM method (src/scym_model.py):
+ 
+      left  -- training-ensemble regression fit: crop-model simulated yield
+               vs. the regression's own predicted yield, with R² (analogous
+               to the paper's Fig. 3 calibration diagnostic).
+      right -- operational per-pixel SCYM estimate vs. the crop model's own
+               "true" simulated yield for that pixel, with the correlation
+               coefficient r (analogous to the paper's Fig. 4/9 validation
+               scatterplots, here checked internally rather than against
+               independent farmer-reported yields).
+    """
+    df = _as_pandas(scym_df)
+ 
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+ 
+    y_true, y_pred = model["y_true"], model["y_pred"]
+    axes[0].scatter(y_pred, y_true, s=25, color="#2D5A27", alpha=0.7)
+    lims = [min(y_true.min(), y_pred.min()), max(y_true.max(), y_pred.max())]
+    axes[0].plot(lims, lims, "k--", lw=1)
+    axes[0].set_xlabel("Regression-predicted yield (t/ha)")
+    axes[0].set_ylabel("Crop-model simulated yield (t/ha)")
+    axes[0].set_title(f"Training fit  (R\u00b2 = {model['r2']:.2f}, n={model['n_train']})")
+    axes[0].grid(alpha=0.3)
+ 
+    x = df["SCYM_yield_t_ha"].to_numpy()
+    y = df["true_yield_t_ha"].to_numpy()
+    y_has_variance = len(y) > 1 and np.nanstd(y) > 1e-9
+    r = float(np.corrcoef(x, y)[0, 1]) if y_has_variance else float("nan")
+    axes[1].scatter(x, y, s=60, color="#E2A13D", edgecolor="black")
+    lims2 = [min(x.min(), y.min()), max(x.max(), y.max())]
+    axes[1].plot(lims2, lims2, "k--", lw=1)
+    axes[1].set_xlabel("SCYM yield estimate (t/ha)")
+    axes[1].set_ylabel("Crop model \"true\" yield (t/ha)")
+    if y_has_variance:
+        axes[1].set_title(f"Operational pixels  (r = {r:.2f}, n={len(df)})")
+    else:
+        axes[1].set_title(f"Operational pixels  (n={len(df)})\n"
+                           f"crop-model yield has ~zero variance across pixels -- "
+                           f"correlation undefined", fontsize=10, color="#B22222")
+    axes[1].grid(alpha=0.3)
+ 
+    fig.suptitle(title, fontsize=13)
+    plt.tight_layout()
+    return fig, axes
+
+
+
+def plot_scym_yield_map(scym_df, grid_rows: int, grid_cols: int,
+                         title: str = "SCYM Yield Map (Lobell et al., 2015)"):
+    """
+    Spatial map of the SCYM per-pixel yield estimate, the crop model's own
+    "true" simulated yield, and their difference -- the actual end
+    deliverable of a yield-*mapping* method (paper Fig. 7 style), as
+    opposed to plot_scym_yield()'s scatter diagnostics.
+
+    Pixels the CDL mask excluded (or that had no usable Landsat
+    observation) are left blank rather than filled with a guessed value.
+    Pixels whose GCVI fell outside the training ensemble's range (see
+    run_scym_pipeline's 'in_training_range' column) are marked with a
+    trailing '*' on the SCYM panel -- their number is an extrapolation,
+    not a validated estimate.
+    """
+    df = _as_pandas(scym_df)
+
+    full_grid = pd.DataFrame(
+        [(i, j) for i in range(grid_rows) for j in range(grid_cols)],
+        columns=["i", "j"],
+    )
+    df = full_grid.merge(df, on=["i", "j"], how="left")
+    has_flag = "in_training_range" in df.columns
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
+    df["diff_t_ha"] = df["SCYM_yield_t_ha"] - df["true_yield_t_ha"]
+
+    panels = [
+        ("SCYM_yield_t_ha", "YlGn", "SCYM yield estimate (t/ha)"),
+        ("true_yield_t_ha", "YlGn", "Crop model \"true\" yield (t/ha)"),
+        ("diff_t_ha", "RdBu_r", "SCYM \u2212 true (t/ha)"),
+    ]
+    for ax, (var, cmap, label) in zip(axes, panels):
+        grid = df.pivot(index="i", columns="j", values=var)
+        finite = grid.to_numpy()
+        finite = finite[~np.isnan(finite)]
+        if finite.size == 0:
+            ax.set_title(f"{label}\n(no data)", fontsize=11)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            continue
+        if var == "diff_t_ha":
+            lim = float(np.nanmax(np.abs(finite))) or 1.0
+            vmin, vmax = -lim, lim
+        else:
+            vmin, vmax = float(finite.min()), float(finite.max())
+        im = ax.imshow(grid, cmap=cmap, interpolation="nearest", vmin=vmin, vmax=vmax)
+        plt.colorbar(im, ax=ax, label=label, fraction=0.046)
+        flag_grid = df.pivot(index="i", columns="j", values="in_training_range") if has_flag else None
+        for r in range(grid.shape[0]):
+            for c in range(grid.shape[1]):
+                v = grid.iloc[r, c]
+                if pd.notna(v):
+                    star = ""
+                    if var == "SCYM_yield_t_ha" and flag_grid is not None:
+                        flag_val = flag_grid.iloc[r, c]
+                        if pd.notna(flag_val) and not bool(flag_val):
+                            star = "*"
+                    ax.text(c, r, f"{v:.2f}{star}", ha="center", va="center", fontsize=10,
+                            color="white" if var != "diff_t_ha" and v > (vmin + vmax) / 2 else "black")
+        ax.set_title(label, fontsize=11)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    n_mapped = df["SCYM_yield_t_ha"].notna().sum()
+    subtitle = f"{n_mapped}/{grid_rows * grid_cols} pixels mapped (rest excluded by CDL mask or missing Landsat obs.)"
+    if has_flag:
+        n_extrap = int((df["in_training_range"] == False).sum())
+        if n_extrap:
+            subtitle += f"  |  * = {n_extrap} pixel(s) extrapolated beyond training GCVI range"
+    fig.suptitle(f"{title}\n{subtitle}", fontsize=12)
+    plt.tight_layout()
+    return fig, axes
+
+
 def save_figure(fig, output_dir: str | Path, file_name: str):
     """Write a figure to disk."""
     directory = Path(output_dir)
@@ -314,11 +451,66 @@ def save_figure(fig, output_dir: str | Path, file_name: str):
     fig.savefig(directory / file_name, bbox_inches="tight")
 
 
-def generate_pipeline_plots(weather_df, et_stack, soil_summary_grid, cm_result, df_out, output_dir: str | Path = "plots"):
-    """Create the legacy notebook plots from the refactored src pipeline outputs."""
+def save_scym_yield_geotiff(scym_df, grid_rows: int, grid_cols: int,
+                            grid_crs, grid_transform, output_path: str | Path):
+    """Write the SCYM estimates on the source Landsat pixel grid."""
+    import rasterio
+
+    df = _as_pandas(scym_df)
+    values = np.full((grid_rows, grid_cols), np.nan, dtype=np.float32)
+    for row in df.itertuples(index=False):
+        value = getattr(row, "SCYM_yield_t_ha")
+        if pd.notna(value):
+            values[int(row.i), int(row.j)] = float(value)
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(
+        output_path,
+        "w",
+        driver="GTiff",
+        height=grid_rows,
+        width=grid_cols,
+        count=1,
+        dtype="float32",
+        crs=grid_crs,
+        transform=grid_transform,
+        nodata=np.nan,
+        compress="deflate",
+    ) as dst:
+        dst.write(values, 1)
+
+
+def generate_pipeline_plots(weather_df, et_stack, soil_summary_grid, cm_result, df_out,
+                             scym_df=None, scym_model=None,
+                             grid_rows: int = None, grid_cols: int = None,
+                             output_dir: str | Path = "plots"):
+    """
+    Create the standard diagnostic plots from the pipeline outputs.
+
+    :param scym_df: optional per-pixel SCYM results table (output of
+        src.scym_model.run_scym_pipeline). If provided along with
+        `scym_model`, two additional SCYM figures are generated: the
+        training-fit/validation scatter diagnostics (plot_scym_yield) and
+        the spatial SCYM yield map (plot_scym_yield_map).
+    :param scym_model: optional fitted-regression dict, the second return
+        value of src.scym_model.run_scym_pipeline.
+    :param grid_rows, grid_cols: grid dimensions, needed for the final-yield
+        and SCYM yield maps. If omitted, inferred from cm_result's i/j
+        columns (max index + 1) -- pass explicitly if the simulated grid
+        has empty edge rows/columns that would make that inference wrong.
+    """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Infer dimensions only when they were not supplied by the caller.
+    cm_pdf = _as_pandas(cm_result)
+    if grid_rows is None:
+        grid_rows = int(cm_pdf["i"].max()) + 1
+    if grid_cols is None:
+        grid_cols = int(cm_pdf["j"].max()) + 1
+
+    # Create the standard input, crop-model, and PROSAIL figures.
     et_fig, _ = plot_et_inputs(et_stack, source_label="OpenET")
     soil_fig, _ = plot_soil_inputs(soil_summary_grid, source_label="gSSURGO")
     weather_fig, _ = plot_weather_inputs(weather_df, station_name="Kansas Mesonet")
@@ -326,21 +518,38 @@ def generate_pipeline_plots(weather_df, et_stack, soil_summary_grid, cm_result, 
     water_fig, _ = plot_water_balance(cm_result)
     prosail_fig, _ = plot_prosail_summary(df_out)
 
+    final_day = cm_pdf["day"].max()
+    final_yield_fig, _ = plot_final_yield(cm_pdf[cm_pdf["day"] == final_day], grid_rows, grid_cols)
+
+    # Save figures with stable names for reports and downstream review.
     save_figure(et_fig, output_dir, "01_et_inputs.png")
     save_figure(soil_fig, output_dir, "02_soil_inputs.png")
     save_figure(weather_fig, output_dir, "03_weather_inputs.png")
     save_figure(crop_fig, output_dir, "04_crop_growth.png")
     save_figure(water_fig, output_dir, "05_water_balance.png")
     save_figure(prosail_fig, output_dir, "06_prosail_summary.png")
+    save_figure(final_yield_fig, output_dir, "07_final_yield_map.png")
 
-    return {
+    figs = {
         "et": et_fig,
         "soil": soil_fig,
         "weather": weather_fig,
         "crop": crop_fig,
         "water": water_fig,
         "prosail": prosail_fig,
+        "final_yield": final_yield_fig,
     }
+
+    if scym_df is not None and scym_model is not None:
+        # Add SCYM diagnostics when both results and the fitted model exist.
+        scym_fig, _ = plot_scym_yield(scym_df, scym_model)
+        scym_map_fig, _ = plot_scym_yield_map(scym_df, grid_rows, grid_cols)
+        save_figure(scym_fig, output_dir, "08_scym_yield.png")
+        save_figure(scym_map_fig, output_dir, "09_scym_yield_map.png")
+        figs["scym"] = scym_fig
+        figs["scym_map"] = scym_map_fig
+
+    return figs
 
 
 if __name__ == "__main__":
@@ -407,16 +616,25 @@ if __name__ == "__main__":
         et_stack = generate_et_stack_synthetic(grid_rows, grid_cols, season_length)
 
     soil_data = fetch_ssurgo_soil_for_bbox(bbox=bbox, session=session, debug=False, config_file=config)
-    soil_layers_grid = None
-    if soil_data is not None and len(soil_data) > 0:
-        mukey_grid = assign_mukeys_to_grid(grid_lats, grid_lons, soil_data)
-        soil_layers_grid, soil_summary_grid = build_ssurgo_soil_layers_grid(soil_data, mukey_grid)
-    else:
-        soil_summary_grid = {
-            "theta_fc": np.full((grid_rows, grid_cols), 0.30),
-            "theta_wp": np.full((grid_rows, grid_cols), 0.12),
-        }
+    # soil_layers_grid = None
+    # if soil_data is not None and len(soil_data) > 0:
+    #     mukey_grid = assign_mukeys_to_grid(grid_lats, grid_lons, soil_data)
+    #     soil_layers_grid, soil_summary_grid = build_ssurgo_soil_layers_grid(soil_data, mukey_grid)
+    # else:
+    #     soil_summary_grid = {
+    #         "theta_fc": np.full((grid_rows, grid_cols), 0.30),
+    #         "theta_wp": np.full((grid_rows, grid_cols), 0.12),
+    #     }
 
+    if soil_data is None or len(soil_data) == 0:
+        raise RuntimeError(
+            "SSURGO/Soil Data Access returned no soil records for this demo "
+            "bbox. This pipeline does not substitute placeholder/uniform "
+            "soil -- check the bbox is within SSURGO survey coverage."
+        )
+    mukey_grid = assign_mukeys_to_grid(grid_lats, grid_lons, soil_data)
+    soil_layers_grid, soil_summary_grid = build_ssurgo_soil_layers_grid(soil_data, mukey_grid)
+    
     cm_result = run_grid_simulation(weather_data=weather_data, ET_stack=et_stack, soil_layers_grid=soil_layers_grid, config_file=config)
 
     df_ps = add_solar_geometry(cm_result, lat=site_lat, lon=site_lon)

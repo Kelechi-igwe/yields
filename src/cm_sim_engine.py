@@ -1,8 +1,8 @@
 import polars as pl
 import numpy as np
 import requests
-from src.crop_model import init_cell_state, step
-from src.data_pull import config
+from updated_scripts.crop_model import init_cell_state, step
+from updated_scripts.data_pull import config
 
 
 def run_grid_simulation(weather_data: list[dict], ET_stack: np.ndarray,

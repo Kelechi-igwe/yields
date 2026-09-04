@@ -74,6 +74,13 @@ initial_state_template:
   B_grain: 0.0
   Zr: 0.15
 
+scym:
+  target_crop: maize
+  cdl_year: 2025
+  max_cloud_cover: 70.0
+  early_window: [40, 75]
+  late_window: [80, 115]
+  n_reps: 40
 
 biomass_allo_stages:
   emergence: {f_leaf: 0.60, f_grain: 0.00}

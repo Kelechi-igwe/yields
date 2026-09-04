@@ -1,6 +1,6 @@
 import numpy as np
 from prosail import run_prosail
-from src.prosail_model import build_soil_reflectance
+from updated_scripts.prosail_model import build_soil_reflectance
 
 
 def run_prosail_grid(df):
@@ -47,6 +47,34 @@ LANDSAT_BANDS = {
 }
 
 
+def compute_vegetation_indices_from_bands(bdf: pl.DataFrame) -> pl.DataFrame:
+    """
+    Add NDVI, SAVI, and GCVI to a DataFrame that already has Landsat-like
+    blue/green/red/nir reflectance columns.
+
+    Shared by two callers:
+      - extract_landsat_bands_and_indices() below, which resamples PROSAIL's
+        simulated full-spectrum reflectance down to Landsat band averages
+        first (Method 2/3 of the YIELDS pipeline);
+      - src.data_pull.fetch_landsat_bands_for_grid(), which pulls real
+        Landsat Collection 2 surface reflectance and already has these
+        columns directly (used by SCYM, src/scym_model.py).
+
+    Index definitions:
+      NDVI = (NIR - RED) / (NIR + RED)
+      SAVI = 1.5 * (NIR - RED) / (NIR + RED + 0.5)
+      GCVI = NIR / GREEN - 1   (Gitelson et al. 2003; the index Lobell et al.
+                                 2015's SCYM method is calibrated on)
+    """
+    eps = 1e-6
+    return bdf.with_columns(
+        NDVI=(pl.col("nir") - pl.col("red")) / (pl.col("nir") + pl.col("red") + eps),
+        SAVI=1.5 * (pl.col("nir") - pl.col("red")) / (pl.col("nir") + pl.col("red") + 0.5 + eps),
+        GCVI=(pl.col("nir") / (pl.col("green") + eps)) - 1.0,
+    )
+
+
+
 def extract_landsat_bands_and_indices(refl: np.ndarray) -> pl.DataFrame:
     """
     Resample PROSAIL full-spectrum output to Landsat 8/9 OLI band averages
@@ -67,9 +95,10 @@ def extract_landsat_bands_and_indices(refl: np.ndarray) -> pl.DataFrame:
 
     bdf = pl.DataFrame(out)
 
-    bdf = bdf.with_columns(
-        NDVI=(pl.col("nir") - pl.col("red")) / (pl.col("nir") + pl.col("red") + eps),
-        SAVI=1.5 * (pl.col("nir") - pl.col("red")) / (pl.col("nir") + pl.col("red") + 0.5 + eps)
-    )
+    # bdf = bdf.with_columns(
+    #     NDVI=(pl.col("nir") - pl.col("red")) / (pl.col("nir") + pl.col("red") + eps),
+    #     SAVI=1.5 * (pl.col("nir") - pl.col("red")) / (pl.col("nir") + pl.col("red") + 0.5 + eps)
+    # )
 
-    return bdf
+    # return bdf
+    return compute_vegetation_indices_from_bands(bdf)

@@ -1,7 +1,7 @@
 import numpy as np
 import copy
 import yaml
-from src.data_pull import config
+from updated_scripts.data_pull import config
 
 def root_fraction(layer_depths, Zr, k):
     """Exponential root-depth distribution (Gerwitz & Page 1974). Sums to 1."""
@@ -14,8 +14,8 @@ def root_fraction(layer_depths, Zr, k):
     return rf / rf.sum() if rf.sum() > 0 else rf
 
 
-def init_cell_state(template, soil_layers):
-    """Initialise state for one grid cell; SM starts at 70% of θ_fc."""
+def init_cell_state(template, soil_layers, sm_frac=0.70):
+    """Initialise state for one grid cell with soil moisture at ``sm_frac`` of θ_fc."""
     s = copy.deepcopy(template)
 
     s["TT"] = float(s.get("TT", 0.0))
@@ -26,7 +26,7 @@ def init_cell_state(template, soil_layers):
     s["Zr"] = float(s.get("Zr", 0.15))
 
     s["soil_layers"] = soil_layers
-    s["SM_layers"]   = [l["theta_fc"] * l["depth"] * 1000 * 0.70 for l in soil_layers]
+    s["SM_layers"]   = [l["theta_fc"] * l["depth"] * 1000 * sm_frac for l in soil_layers]
     return s
 
 
