@@ -1,6 +1,6 @@
 import numpy as np
 from prosail import run_prosail
-from updated_scripts.prosail_model import build_soil_reflectance
+from src.prosail_model import build_soil_reflectance
 
 
 def run_prosail_grid(df):

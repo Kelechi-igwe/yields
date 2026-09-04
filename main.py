@@ -11,19 +11,19 @@ from dotenv import load_dotenv
 import os
 import time
 
-from updated_scripts.cm_sim_engine import run_grid_simulation
-from updated_scripts.data_pull import (fetch_weather_from_mesonet, build_landsat_aligned_grid,
+from src.cm_sim_engine import run_grid_simulation
+from src.data_pull import (fetch_weather_from_mesonet, build_landsat_aligned_grid,
                             fetch_et_stack_from_openet,
                             fetch_ssurgo_soil_for_bbox,
                             assign_mukeys_to_grid, fetch_landsat_bands_for_grid,
                             fetch_cdl_crop_mask_for_grid,
                             build_ssurgo_soil_layers_grid, create_pipeline_sesh
                             )
-from updated_scripts.prosail_model import add_solar_geometry, map_to_prosail_params
-from updated_scripts.pros_sim_engine import run_prosail_grid, extract_landsat_bands_and_indices
-from updated_scripts.scym_model import run_scym_pipeline
+from src.prosail_model import add_solar_geometry, map_to_prosail_params
+from src.pros_sim_engine import run_prosail_grid, extract_landsat_bands_and_indices
+from src.scym_model import run_scym_pipeline
 
-from updated_scripts.plotting import generate_pipeline_plots, save_scym_yield_geotiff
+from src.plotting import generate_pipeline_plots, save_scym_yield_geotiff
 
 load_dotenv()
 
@@ -31,7 +31,7 @@ load_dotenv()
 openet_api_key = os.getenv('OPENET_API_KEY')
 pipeline_session = create_pipeline_sesh(openet_api_key)
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent
 
 config_path = ROOT / 'config.yaml'
 

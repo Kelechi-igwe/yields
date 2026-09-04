@@ -1,7 +1,7 @@
 import numpy as np
 import copy
 import yaml
-from updated_scripts.data_pull import config
+from src.data_pull import config
 
 def root_fraction(layer_depths, Zr, k):
     """Exponential root-depth distribution (Gerwitz & Page 1974). Sums to 1."""

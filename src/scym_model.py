@@ -42,13 +42,13 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from updated_scripts.crop_model import init_cell_state, step
-from updated_scripts.data_pull import (
+from src.crop_model import init_cell_state, step
+from src.data_pull import (
     config as _default_config,
     compute_seasonal_weather_covariates,
     generate_scym_ensemble_specs,
 )
-from updated_scripts.pros_sim_engine import compute_vegetation_indices_from_bands
+from src.pros_sim_engine import compute_vegetation_indices_from_bands
 
 # ------------------------------------------------------------------------
 # SCYM step 2 — pseudo-observations: LAI -> GCVI
